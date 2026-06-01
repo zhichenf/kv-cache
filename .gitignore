@@ -1,0 +1,11 @@
+# build目录
+build/
+
+# 第三方库构建产物（DLL/so 文件）
+third_party/lib
+
+# log文件
+logs/
+
+# vscode缓存
+.vscode/
