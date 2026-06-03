@@ -9,6 +9,18 @@
 - [✔] `server_main` — 服务端入口
 - [✔] `client_main` — 客户端 CLI 入口
 
+## Phase 2：持久化与崩溃恢复（阶段 1：简单同步 WAL）
+
+- [✔] CRC32 校验算法（`crc32.h/cpp`）
+- [ ] WAL 日志实现（`wal.h/cpp`）
+- [ ] 持久化存储类（`persistent_kv_store.h/cpp`）
+- [ ] 修改 `server_main` 支持 `--data-dir` 参数
+- [ ] 更新 `CMakeLists.txt` 添加新源文件
+- [ ] CRC32 单元测试（`tests/test_crc32.cpp`）
+- [ ] WAL 单元测试（`tests/test_wal.cpp`）
+- [ ] 构建并运行测试
+- [ ] 手动崩溃恢复测试
+
 ## 待重构
 
 - [ ] `tcp_server` 改用 Reactor 模型（epoll / kqueue / IOCP），替换当前阻塞 + 每连接一线程模式
