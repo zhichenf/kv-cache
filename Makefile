@@ -1,11 +1,13 @@
-.PHONY: build clean test test_all server client
+.PHONY: build clean test test_all server client bench
 
 BUILD_DIR = build
 GTEST_LIB_DIR = third_party/lib/win
 
-# 构建所有目标，并将 Google Test 动态库拷贝到 test 目录
+# 构建所有目标（增量编译）
 build:
-	@mkdir -p $(BUILD_DIR) && cd $(BUILD_DIR) && cmake -G "MinGW Makefiles" .. && cmake --build .
+	@mkdir -p $(BUILD_DIR) 2>/dev/null || true
+	@if [ ! -f $(BUILD_DIR)/Makefile ]; then cd $(BUILD_DIR) && cmake -G "MinGW Makefiles" ..; fi
+	@cd $(BUILD_DIR) && cmake --build .
 	@cp -f $(GTEST_LIB_DIR)/*.dll $(BUILD_DIR)/test/ 2>/dev/null || true
 
 # 运行所有测试
@@ -47,3 +49,9 @@ client: build
 # 清理构建产物
 clean:
 	@rm -rf $(BUILD_DIR)
+
+# 运行性能测试
+bench: build
+	@mkdir -p $(BUILD_DIR)/bench
+	@cp -f $(GTEST_LIB_DIR)/libbenchmark*.dll $(BUILD_DIR)/bench/ 2>/dev/null || true
+	@cd $(BUILD_DIR) && ./bench/bench_wal.exe

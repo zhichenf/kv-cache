@@ -17,6 +17,7 @@ add_library(kvstore_lib
     src/client/client.cpp
 )
 target_include_directories(kvstore_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(kvstore_lib PUBLIC Threads::Threads)
 
 add_executable(kv_server src/server/server_main.cpp)
 target_link_libraries(kv_server PRIVATE kvstore_lib Threads::Threads)
@@ -145,4 +146,59 @@ if(WIN32)
     target_link_libraries(test_cli_parser PRIVATE wsock32 ws2_32)
     target_link_libraries(test_crc32 PRIVATE wsock32 ws2_32)
     target_link_libraries(test_wal PRIVATE wsock32 ws2_32)
+endif()
+
+# Google Benchmark 跨平台配置
+set(BENCHMARK_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/third_party/benchmark/include)
+
+if(WIN32)
+    set(BENCHMARK_PLATFORM_DIR ${CMAKE_SOURCE_DIR}/third_party/lib/win)
+    set(BENCHMARK_LIB_NAMES libbenchmark.dll libbenchmark_main.dll)
+else()
+    set(BENCHMARK_PLATFORM_DIR ${CMAKE_SOURCE_DIR}/third_party/lib/linux)
+    set(BENCHMARK_LIB_NAMES libbenchmark.so libbenchmark_main.so)
+endif()
+
+set(BENCHMARK_LIB_FOUND TRUE)
+foreach(lib ${BENCHMARK_LIB_NAMES})
+    if(NOT EXISTS "${BENCHMARK_PLATFORM_DIR}/${lib}")
+        set(BENCHMARK_LIB_FOUND FALSE)
+        break()
+    endif()
+endforeach()
+
+if(BENCHMARK_LIB_FOUND)
+    message(STATUS "Google Benchmark pre-built libraries found in ${BENCHMARK_PLATFORM_DIR}")
+
+    if(WIN32)
+        add_library(benchmark SHARED IMPORTED)
+        set_target_properties(benchmark PROPERTIES
+            IMPORTED_LOCATION ${BENCHMARK_PLATFORM_DIR}/libbenchmark.dll
+            IMPORTED_IMPLIB ${BENCHMARK_PLATFORM_DIR}/libbenchmark.dll.a
+        )
+        add_library(benchmark_main SHARED IMPORTED)
+        set_target_properties(benchmark_main PROPERTIES
+            IMPORTED_LOCATION ${BENCHMARK_PLATFORM_DIR}/libbenchmark_main.dll
+            IMPORTED_IMPLIB ${BENCHMARK_PLATFORM_DIR}/libbenchmark_main.dll.a
+        )
+    else()
+        add_library(benchmark SHARED IMPORTED)
+        set_target_properties(benchmark PROPERTIES
+            IMPORTED_LOCATION ${BENCHMARK_PLATFORM_DIR}/libbenchmark.so
+        )
+        add_library(benchmark_main SHARED IMPORTED)
+        set_target_properties(benchmark_main PROPERTIES
+            IMPORTED_LOCATION ${BENCHMARK_PLATFORM_DIR}/libbenchmark_main.so
+        )
+    endif()
+endif()
+
+# Benchmark 可执行文件
+add_executable(bench_wal benchmarks/bench_wal.cpp)
+set_target_properties(bench_wal PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bench)
+target_include_directories(bench_wal PRIVATE ${BENCHMARK_INCLUDE_DIR})
+target_link_libraries(bench_wal PRIVATE kvstore_lib benchmark benchmark_main Threads::Threads)
+
+if(WIN32)
+    target_link_libraries(bench_wal PRIVATE wsock32 ws2_32)
 endif()

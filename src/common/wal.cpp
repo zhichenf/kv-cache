@@ -6,14 +6,18 @@
 #ifdef _WIN32
 #include <io.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #else
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 #endif
 
 // ============================================================
 // WALRecord 实现
 // ============================================================
 
+// 命令进行序列化并添加 CRC32 校验
 std::string WALRecord::Serialize() const {
     std::string data;
     
@@ -48,6 +52,7 @@ std::string WALRecord::Serialize() const {
     return result;
 }
 
+// 从二进制数据中反序列化 WALRecord，并验证 CRC32
 WALRecord WALRecord::Deserialize(const char* data, size_t len, size_t& consumed) {
     if (len < 9) {
         consumed = 0;
@@ -106,11 +111,13 @@ WALRecord WALRecord::Deserialize(const char* data, size_t len, size_t& consumed)
 }
 
 // ============================================================
-// WAL 实现（单例模式）
+// WAL 实现（单例模式，全部使用原生系统调用）
 // ============================================================
 
 WAL::WAL()
-    : is_open_(false),
+    : fd_(-1),
+      write_pos_(0),
+      is_open_(false),
       enabled_(false),
       max_retries_(3),
       running_(false) {
@@ -124,16 +131,27 @@ WAL::~WAL() {
         sync_thread_.join();
     }
     
-    // 最后刷盘
+    // 最后刷盘并关闭
     if (is_open_) {
         Sync();
-        file_.close();
+        CloseFD();
     }
 }
 
 WAL& WAL::GetInstance() {
     static WAL instance;
     return instance;
+}
+
+void WAL::CloseFD() {
+    if (fd_ >= 0) {
+#ifdef _WIN32
+        _close(fd_);
+#else
+        close(fd_);
+#endif
+        fd_ = -1;
+    }
 }
 
 void WAL::Init(const std::string& filepath, const WALConfig& config) {
@@ -146,7 +164,8 @@ void WAL::Init(const std::string& filepath, const WALConfig& config) {
             sync_thread_.join();
         }
         Sync();
-        file_.close();
+        CloseFD();
+        is_open_ = false;
     }
     
     config_ = config;
@@ -173,7 +192,7 @@ void WAL::Shutdown() {
     
     if (is_open_) {
         Sync();
-        file_.close();
+        CloseFD();
         is_open_ = false;
     }
     
@@ -182,21 +201,31 @@ void WAL::Shutdown() {
 
 bool WAL::TryOpen() {
     for (int i = 0; i < max_retries_; ++i) {
-        file_.open(filepath_, std::ios::in | std::ios::out | std::ios::binary | std::ios::app);
-        if (file_.is_open()) {
+        // 先尝试以读写方式打开（追加模式）
+#ifdef _WIN32
+        fd_ = _open(filepath_.c_str(), _O_RDWR | _O_BINARY | _O_CREAT, _S_IREAD | _S_IWRITE);
+#else
+        fd_ = open(filepath_.c_str(), O_RDWR | O_CREAT, 0644);
+#endif
+        if (fd_ >= 0) {
+            // 移动到文件末尾（追加写入）
+            write_pos_ = lseek(fd_, 0, SEEK_END);
+            if (write_pos_ == static_cast<off_t>(-1)) {
+                write_pos_ = 0;
+            }
             is_open_ = true;
             return true;
         }
         
-        file_.clear();
-        
-        file_.open(filepath_, std::ios::in | std::ios::out | std::ios::binary | std::ios::trunc);
-        if (file_.is_open()) {
-            is_open_ = true;
-            return true;
+        // 清除错误状态，重试
+#ifdef _WIN32
+        // Windows 没有 errno 风格的错误，直接重试
+#else
+        // 检查是否是权限问题等不可恢复错误
+        if (errno != ENOENT && errno != EACCES) {
+            break;
         }
-        
-        file_.clear();
+#endif
     }
     
     is_open_ = false;
@@ -238,11 +267,35 @@ std::vector<WALRecord> WAL::ReadAll() {
         return records;
     }
     
-    file_.seekg(0, std::ios::beg);
+    // 获取文件大小
+    off_t file_size = lseek(fd_, 0, SEEK_END);
+    if (file_size <= 0) {
+        return records;
+    }
     
-    std::string content((std::istreambuf_iterator<char>(file_)),
-                         std::istreambuf_iterator<char>());
+    // 读取全部内容
+    std::string content(file_size, '\0');
+    lseek(fd_, 0, SEEK_END);
     
+    // 先定位到文件开头
+    lseek(fd_, 0, SEEK_SET);
+    
+    ssize_t total_read = 0;
+    char* ptr = content.data();
+    while (total_read < file_size) {
+#ifdef _WIN32
+        ssize_t n = _read(fd_, ptr, static_cast<unsigned int>(file_size - total_read));
+#else
+        ssize_t n = read(fd_, ptr, file_size - total_read);
+#endif
+        if (n <= 0) break;
+        total_read += n;
+        ptr += n;
+    }
+    
+    content.resize(total_read);
+    
+    // 解析记录
     size_t offset = 0;
     while (offset < content.size()) {
         size_t consumed = 0;
@@ -260,8 +313,6 @@ std::vector<WALRecord> WAL::ReadAll() {
         offset += consumed;
     }
     
-    file_.seekg(0, std::ios::end);
-    
     return records;
 }
 
@@ -272,26 +323,31 @@ void WAL::Clear() {
         return;
     }
     
-    file_.close();
-    file_.open(filepath_, std::ios::in | std::ios::out | std::ios::binary | std::ios::trunc);
-    if (!file_.is_open()) {
+    CloseFD();
+    
+    // 重新打开文件并清空
+#ifdef _WIN32
+    fd_ = _open(filepath_.c_str(), _O_RDWR | _O_BINARY | _O_TRUNC | _O_CREAT, _S_IREAD | _S_IWRITE);
+#else
+    fd_ = open(filepath_.c_str(), O_RDWR | O_TRUNC | O_CREAT, 0644);
+#endif
+    
+    if (fd_ < 0) {
         throw std::runtime_error("Failed to clear WAL file: " + filepath_);
     }
+    
+    write_pos_ = 0;
 }
 
 void WAL::Sync() {
-    if (!enabled_) {
+    if (!enabled_ || fd_ < 0) {
         return;
     }
     
-    file_.flush();
-    
 #ifdef _WIN32
-    int fd = _fileno(reinterpret_cast<FILE*>(file_.rdbuf()));
-    _commit(fd);
+    _commit(fd_);
 #else
-    int fd = fileno(reinterpret_cast<FILE*>(file_.rdbuf()));
-    fsync(fd);
+    fsync(fd_);
 #endif
 }
 
@@ -303,17 +359,16 @@ std::string WAL::GetFilepath() const {
 size_t WAL::GetFileSize() const {
     std::lock_guard<std::mutex> lock(mutex_);
     
-    if (!is_open_) {
+    if (!is_open_ || fd_ < 0) {
         return 0;
     }
     
-    WAL* self = const_cast<WAL*>(this);
-    std::streampos current_pos = self->file_.tellg();
-    self->file_.seekg(0, std::ios::end);
-    size_t size = static_cast<size_t>(self->file_.tellg());
-    self->file_.seekg(current_pos);
+    // 用 lseek 获取文件大小，不影响写入位置
+    off_t cur = lseek(fd_, 0, SEEK_CUR);
+    off_t end = lseek(fd_, 0, SEEK_END);
+    lseek(fd_, cur, SEEK_SET);
     
-    return size;
+    return static_cast<size_t>(end);
 }
 
 bool WAL::IsEnabled() const {
@@ -328,30 +383,31 @@ FsyncPolicy WAL::GetPolicy() const {
 
 void WAL::SyncLoop() {
     while (running_) {
-        // 等待 1 秒
-        std::this_thread::sleep_for(std::chrono::milliseconds(config_.sync_interval_ms));
-        
-        // 定期 fsync
-        if (is_open_) {
+        // 在锁内读取配置和检查状态，避免竞态条件
+        int interval_ms = 0;
+        {
             std::lock_guard<std::mutex> lock(mutex_);
-            Sync();
+            interval_ms = config_.sync_interval_ms;
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(interval_ms));
+        
+        std::lock_guard<std::mutex> lock(mutex_);
+        Sync();
     }
 }
 
 void WAL::WriteRecord(const WALRecord& record) {
     std::string data = record.Serialize();
-    Write(data.data(), data.size());
-}
-
-void WAL::Write(const char* data, size_t len) {
-    file_.write(data, len);
-    if (!file_.good()) {
+    
+#ifdef _WIN32
+    ssize_t n = _write(fd_, data.data(), static_cast<unsigned int>(data.size()));
+#else
+    ssize_t n = write(fd_, data.data(), data.size());
+#endif
+    
+    if (n != static_cast<ssize_t>(data.size())) {
         throw std::runtime_error("Failed to write to WAL file");
     }
-}
-
-size_t WAL::Read(char* data, size_t len) {
-    file_.read(data, len);
-    return static_cast<size_t>(file_.gcount());
+    
+    write_pos_ += n;
 }

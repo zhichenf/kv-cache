@@ -2,7 +2,6 @@
 
 #include <string>
 #include <vector>
-#include <fstream>
 #include <cstdint>
 #include <functional>
 #include <thread>
@@ -97,17 +96,14 @@ private:
     // 尝试打开文件
     bool TryOpen();
     
+    // 关闭文件
+    void CloseFD();
+    
     // 后台刷盘线程
     void SyncLoop();
     
     // 写入一条完整的记录（包含 CRC32）
     void WriteRecord(const WALRecord& record);
-    
-    // 写入原始数据
-    void Write(const char* data, size_t len);
-    
-    // 读取数据
-    size_t Read(char* data, size_t len);
     
     // 互斥锁（保护所有操作）
     mutable std::mutex mutex_;
@@ -115,9 +111,10 @@ private:
     // 配置
     WALConfig config_;
     
-    // 文件相关
+    // 文件相关（全部使用原生系统调用）
     std::string filepath_;
-    std::fstream file_;
+    int fd_;                    // 原生文件描述符
+    off_t write_pos_;           // 当前写入位置
     bool is_open_;
     bool enabled_;
     int max_retries_;
