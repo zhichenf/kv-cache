@@ -52,3 +52,32 @@ uint32_t CRC32(const std::string& str) {
 uint32_t CRC32(uint8_t byte) {
     return CRC32(&byte, 1);
 }
+
+// ============================================================
+// crc namespace 实现
+// ============================================================
+
+namespace crc {
+
+void AppendChecksum(std::string& output, const std::string& data) {
+    uint32_t checksum = CRC32(data);
+    output += static_cast<char>(checksum & 0xFF);
+    output += static_cast<char>((checksum >> 8) & 0xFF);
+    output += static_cast<char>((checksum >> 16) & 0xFF);
+    output += static_cast<char>((checksum >> 24) & 0xFF);
+}
+
+uint32_t ReadChecksum(const char* data) {
+    return static_cast<uint8_t>(data[0])
+         | (static_cast<uint8_t>(data[1]) << 8)
+         | (static_cast<uint8_t>(data[2]) << 16)
+         | (static_cast<uint8_t>(data[3]) << 24);
+}
+
+bool VerifyChecksum(const char* data, size_t data_len) {
+    uint32_t stored = ReadChecksum(data + data_len);
+    uint32_t calculated = CRC32(data, data_len);
+    return stored == calculated;
+}
+
+} // namespace crc

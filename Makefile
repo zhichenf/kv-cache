@@ -17,6 +17,7 @@ test_all: build
 	@cd $(BUILD_DIR) && ./test/test_cli_parser.exe
 	@cd $(BUILD_DIR) && ./test/test_crc32.exe
 	@cd $(BUILD_DIR) && ./test/test_wal.exe
+	@cd $(BUILD_DIR) && ./test/test_snapshot.exe
 
 # 运行 KvStore 测试
 test_kv_store: build
@@ -37,6 +38,10 @@ test_crc32: build
 # 运行 WAL 测试
 test_wal: build
 	@cd $(BUILD_DIR) && ./test/test_wal.exe
+
+# 运行 Snapshot 测试
+test_snapshot: build
+	@cd $(BUILD_DIR) && ./test/test_snapshot.exe
 
 # 启动服务端
 server: build

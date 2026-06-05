@@ -14,6 +14,62 @@
 #endif
 
 // ============================================================
+// 平台相关辅助函数
+// ============================================================
+
+namespace {
+
+int FileOpenReadWrite(const char* path) {
+#ifdef _WIN32
+    return _open(path, _O_RDWR | _O_BINARY | _O_CREAT, _S_IREAD | _S_IWRITE);
+#else
+    return open(path, O_RDWR | O_CREAT, 0644);
+#endif
+}
+
+int FileOpenTruncate(const char* path) {
+#ifdef _WIN32
+    return _open(path, _O_RDWR | _O_BINARY | _O_TRUNC | _O_CREAT, _S_IREAD | _S_IWRITE);
+#else
+    return open(path, O_RDWR | O_TRUNC | O_CREAT, 0644);
+#endif
+}
+
+ssize_t FileRead(int fd, void* buf, size_t count) {
+#ifdef _WIN32
+    return _read(fd, buf, static_cast<unsigned int>(count));
+#else
+    return read(fd, buf, count);
+#endif
+}
+
+ssize_t FileWrite(int fd, const void* buf, size_t count) {
+#ifdef _WIN32
+    return _write(fd, buf, static_cast<unsigned int>(count));
+#else
+    return write(fd, buf, count);
+#endif
+}
+
+void FileClose(int fd) {
+#ifdef _WIN32
+    _close(fd);
+#else
+    close(fd);
+#endif
+}
+
+void FileSync(int fd) {
+#ifdef _WIN32
+    _commit(fd);
+#else
+    fsync(fd);
+#endif
+}
+
+} // namespace
+
+// ============================================================
 // WALRecord 实现
 // ============================================================
 
@@ -40,13 +96,9 @@ std::string WALRecord::Serialize() const {
     // Value
     data += value;
     
-    // CRC32 (4 bytes, little-endian)
-    uint32_t crc = CRC32(data);
+    // CRC32 (4 bytes, little-endian) + data
     std::string result;
-    result += static_cast<char>(crc & 0xFF);
-    result += static_cast<char>((crc >> 8) & 0xFF);
-    result += static_cast<char>((crc >> 16) & 0xFF);
-    result += static_cast<char>((crc >> 24) & 0xFF);
+    crc::AppendChecksum(result, data);  // CRC 在前
     result += data;
     
     return result;
@@ -59,10 +111,7 @@ WALRecord WALRecord::Deserialize(const char* data, size_t len, size_t& consumed)
         return {};
     }
     
-    uint32_t stored_crc = static_cast<uint8_t>(data[0])
-                        | (static_cast<uint8_t>(data[1]) << 8)
-                        | (static_cast<uint8_t>(data[2]) << 16)
-                        | (static_cast<uint8_t>(data[3]) << 24);
+    uint32_t stored_crc = crc::ReadChecksum(data);
     
     OpType op = static_cast<OpType>(data[4]);
     
@@ -90,6 +139,7 @@ WALRecord WALRecord::Deserialize(const char* data, size_t len, size_t& consumed)
     
     std::string value(data + val_len_offset + 2, val_len);
     
+    // 构建用于 CRC 验证的数据
     std::string data_for_crc;
     data_for_crc += static_cast<char>(op);
     data_for_crc += static_cast<char>(key_len & 0xFF);
@@ -111,7 +161,7 @@ WALRecord WALRecord::Deserialize(const char* data, size_t len, size_t& consumed)
 }
 
 // ============================================================
-// WAL 实现（单例模式，全部使用原生系统调用）
+// WAL 实现（单例模式）
 // ============================================================
 
 WAL::WAL()
@@ -145,11 +195,7 @@ WAL& WAL::GetInstance() {
 
 void WAL::CloseFD() {
     if (fd_ >= 0) {
-#ifdef _WIN32
-        _close(fd_);
-#else
-        close(fd_);
-#endif
+        FileClose(fd_);
         fd_ = -1;
     }
 }
@@ -202,11 +248,7 @@ void WAL::Shutdown() {
 bool WAL::TryOpen() {
     for (int i = 0; i < max_retries_; ++i) {
         // 先尝试以读写方式打开（追加模式）
-#ifdef _WIN32
-        fd_ = _open(filepath_.c_str(), _O_RDWR | _O_BINARY | _O_CREAT, _S_IREAD | _S_IWRITE);
-#else
-        fd_ = open(filepath_.c_str(), O_RDWR | O_CREAT, 0644);
-#endif
+        fd_ = FileOpenReadWrite(filepath_.c_str());
         if (fd_ >= 0) {
             // 移动到文件末尾（追加写入）
             write_pos_ = lseek(fd_, 0, SEEK_END);
@@ -218,9 +260,7 @@ bool WAL::TryOpen() {
         }
         
         // 清除错误状态，重试
-#ifdef _WIN32
-        // Windows 没有 errno 风格的错误，直接重试
-#else
+#ifndef _WIN32
         // 检查是否是权限问题等不可恢复错误
         if (errno != ENOENT && errno != EACCES) {
             break;
@@ -273,21 +313,15 @@ std::vector<WALRecord> WAL::ReadAll() {
         return records;
     }
     
-    // 读取全部内容
-    std::string content(file_size, '\0');
-    lseek(fd_, 0, SEEK_END);
-    
     // 先定位到文件开头
     lseek(fd_, 0, SEEK_SET);
     
-    ssize_t total_read = 0;
+    // 读取全部内容
+    std::string content(file_size, '\0');
     char* ptr = content.data();
+    ssize_t total_read = 0;
     while (total_read < file_size) {
-#ifdef _WIN32
-        ssize_t n = _read(fd_, ptr, static_cast<unsigned int>(file_size - total_read));
-#else
-        ssize_t n = read(fd_, ptr, file_size - total_read);
-#endif
+        ssize_t n = FileRead(fd_, ptr, file_size - total_read);
         if (n <= 0) break;
         total_read += n;
         ptr += n;
@@ -326,11 +360,7 @@ void WAL::Clear() {
     CloseFD();
     
     // 重新打开文件并清空
-#ifdef _WIN32
-    fd_ = _open(filepath_.c_str(), _O_RDWR | _O_BINARY | _O_TRUNC | _O_CREAT, _S_IREAD | _S_IWRITE);
-#else
-    fd_ = open(filepath_.c_str(), O_RDWR | O_TRUNC | O_CREAT, 0644);
-#endif
+    fd_ = FileOpenTruncate(filepath_.c_str());
     
     if (fd_ < 0) {
         throw std::runtime_error("Failed to clear WAL file: " + filepath_);
@@ -343,12 +373,7 @@ void WAL::Sync() {
     if (!enabled_ || fd_ < 0) {
         return;
     }
-    
-#ifdef _WIN32
-    _commit(fd_);
-#else
-    fsync(fd_);
-#endif
+    FileSync(fd_);
 }
 
 std::string WAL::GetFilepath() const {
@@ -399,11 +424,7 @@ void WAL::SyncLoop() {
 void WAL::WriteRecord(const WALRecord& record) {
     std::string data = record.Serialize();
     
-#ifdef _WIN32
-    ssize_t n = _write(fd_, data.data(), static_cast<unsigned int>(data.size()));
-#else
-    ssize_t n = write(fd_, data.data(), data.size());
-#endif
+    ssize_t n = FileWrite(fd_, data.data(), data.size());
     
     if (n != static_cast<ssize_t>(data.size())) {
         throw std::runtime_error("Failed to write to WAL file");

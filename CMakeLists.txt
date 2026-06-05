@@ -13,6 +13,7 @@ add_library(kvstore_lib
     src/common/protocol.cpp
     src/common/crc32.cpp
     src/common/wal.cpp
+    src/common/snapshot.cpp
     src/server/tcp_server.cpp
     src/client/client.cpp
 )
@@ -140,12 +141,20 @@ set_target_properties(test_wal PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINAR
 target_include_directories(test_wal PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
 target_link_libraries(test_wal PRIVATE kvstore_lib gtest gtest_main)
 
+add_executable(test_snapshot
+    tests/test_snapshot.cpp
+)
+set_target_properties(test_snapshot PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
+target_include_directories(test_snapshot PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
+target_link_libraries(test_snapshot PRIVATE kvstore_lib gtest gtest_main)
+
 if(WIN32)
     target_link_libraries(test_kv_store PRIVATE wsock32 ws2_32)
     target_link_libraries(test_protocol PRIVATE wsock32 ws2_32)
     target_link_libraries(test_cli_parser PRIVATE wsock32 ws2_32)
     target_link_libraries(test_crc32 PRIVATE wsock32 ws2_32)
     target_link_libraries(test_wal PRIVATE wsock32 ws2_32)
+    target_link_libraries(test_snapshot PRIVATE wsock32 ws2_32)
 endif()
 
 # Google Benchmark 跨平台配置
