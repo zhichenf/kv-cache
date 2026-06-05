@@ -73,6 +73,10 @@ public:
     // 清空日志文件（快照后调用）
     void Clear();
     
+    // 清空日志文件（不加锁版本，供 PersistentKvStore 原子操作使用）
+    // 调用前必须已持有 mutex_
+    void ClearWithoutLock();
+    
     // 手动刷盘（强制写入磁盘）
     void Sync();
     
@@ -87,6 +91,9 @@ public:
     
     // 获取当前刷盘策略
     FsyncPolicy GetPolicy() const;
+    
+    // 获取互斥锁（供 PersistentKvStore 原子操作使用）
+    std::mutex& GetMutex() const;
 
 private:
     // 私有构造函数（单例模式）

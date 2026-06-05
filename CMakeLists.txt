@@ -10,6 +10,7 @@ find_package(Threads REQUIRED)
 
 add_library(kvstore_lib
     src/storage/kv_store.cpp
+    src/storage/persistent_kv_store.cpp
     src/common/protocol.cpp
     src/common/crc32.cpp
     src/common/wal.cpp
@@ -148,6 +149,13 @@ set_target_properties(test_snapshot PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_
 target_include_directories(test_snapshot PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
 target_link_libraries(test_snapshot PRIVATE kvstore_lib gtest gtest_main)
 
+add_executable(test_persistent_kv_store
+    tests/test_persistent_kv_store.cpp
+)
+set_target_properties(test_persistent_kv_store PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
+target_include_directories(test_persistent_kv_store PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
+target_link_libraries(test_persistent_kv_store PRIVATE kvstore_lib gtest gtest_main)
+
 if(WIN32)
     target_link_libraries(test_kv_store PRIVATE wsock32 ws2_32)
     target_link_libraries(test_protocol PRIVATE wsock32 ws2_32)
@@ -155,6 +163,7 @@ if(WIN32)
     target_link_libraries(test_crc32 PRIVATE wsock32 ws2_32)
     target_link_libraries(test_wal PRIVATE wsock32 ws2_32)
     target_link_libraries(test_snapshot PRIVATE wsock32 ws2_32)
+    target_link_libraries(test_persistent_kv_store PRIVATE wsock32 ws2_32)
 endif()
 
 # Google Benchmark 跨平台配置

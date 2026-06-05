@@ -7,5 +7,8 @@ third_party/lib
 # log文件
 logs/
 
+# 数据目录
+data/
+
 # vscode缓存
 .vscode/

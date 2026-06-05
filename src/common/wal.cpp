@@ -352,7 +352,10 @@ std::vector<WALRecord> WAL::ReadAll() {
 
 void WAL::Clear() {
     std::lock_guard<std::mutex> lock(mutex_);
-    
+    ClearWithoutLock();
+}
+
+void WAL::ClearWithoutLock() {
     if (!enabled_) {
         return;
     }
@@ -404,6 +407,10 @@ bool WAL::IsEnabled() const {
 FsyncPolicy WAL::GetPolicy() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return config_.policy;
+}
+
+std::mutex& WAL::GetMutex() const {
+    return mutex_;
 }
 
 void WAL::SyncLoop() {

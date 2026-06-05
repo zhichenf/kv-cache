@@ -23,7 +23,7 @@ public:
     std::vector<std::string> AllKeys() const;
     size_t Size() const;
 
-private:
+protected:
     mutable std::shared_mutex mutex_;
     std::unordered_map<std::string, std::string> data_;
 };

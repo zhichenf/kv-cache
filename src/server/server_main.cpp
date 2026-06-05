@@ -1,4 +1,5 @@
 #include "storage/kv_store.h"
+#include "storage/persistent_kv_store.h"
 #include "server/tcp_server.h"
 #include "common/protocol.h"
 #include "common/logger.h"
@@ -21,17 +22,39 @@ static void SignalHandler(int) {
     g_running = false;
 }
 
-// 服务端入口：解析端口 → 创建 KvStore + TcpServer → 启动 → 等待 Ctrl+C
+static void PrintUsage() {
+    std::cout << "Usage: kv_server [options]\n"
+              << "Options:\n"
+              << "  -p, --port <port>       Server port (default: 6379)\n"
+              << "  -d, --data-dir <path>   Data directory for persistence (default: ./data)\n"
+              << "  -h, --help              Show this help message\n";
+}
+
+// 服务端入口：解析参数 → 创建 PersistentKvStore + TcpServer → 启动 → 等待 Ctrl+C
 int main(int argc, char* argv[]) {
     uint16_t port = 6379;
-    if (argc > 1) {
-        port = static_cast<uint16_t>(std::stoi(argv[1]));
+    std::string data_dir = "./data";
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if ((arg == "-p" || arg == "--port") && i + 1 < argc) {
+            port = static_cast<uint16_t>(std::stoi(argv[++i]));
+        } else if ((arg == "-d" || arg == "--data-dir") && i + 1 < argc) {
+            data_dir = argv[++i];
+        } else if (arg == "-h" || arg == "--help") {
+            PrintUsage();
+            return 0;
+        } else {
+            std::cerr << "Unknown option: " << arg << "\n";
+            PrintUsage();
+            return 1;
+        }
     }
 
     signal(SIGINT, SignalHandler);
     signal(SIGTERM, SignalHandler);
 
-    KvStore store{};
+    PersistentKvStore store(data_dir);
     TcpServer server(port);
 
     std::unordered_map<int, RespReader> readers;        // 每个连接都要又一个reader
