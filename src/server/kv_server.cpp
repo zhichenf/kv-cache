@@ -68,7 +68,10 @@ LogLevel KvServer::ParseLogLevel(const std::string& level) const {
 
 void KvServer::RegisterMessageHandler() {
     tcp_server_->SetOnMessage([this](int fd, const std::string& data) -> std::string {
-        auto& reader = readers_[fd];
+        auto& shard = GetShard(fd);
+        std::lock_guard lock(shard.mutex);
+        
+        auto& reader = shard.readers[fd];
         reader.Feed(data.data(), data.size());
         
         std::string result;

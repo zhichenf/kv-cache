@@ -8,6 +8,8 @@
 #include <string>
 #include <memory>
 #include <atomic>
+#include <array>
+#include <mutex>
 
 class KvServer {
 public:
@@ -32,7 +34,7 @@ public:
     
     // 获取存储实例（用于测试）
     PersistentKvStore& GetStore() { return *store_; }
-
+    
 private:
     // 注册消息处理回调
     void RegisterMessageHandler();
@@ -40,9 +42,22 @@ private:
     // 解析日志级别字符串
     LogLevel ParseLogLevel(const std::string& level) const;
     
+    // 分片锁：减少并发竞争
+    static constexpr size_t SHARD_COUNT = 16;
+    
+    struct Shard {
+        mutable std::mutex mutex;
+        std::unordered_map<int, RespReader> readers;
+    };
+    
+    std::array<Shard, SHARD_COUNT> shards_;
+    
+    Shard& GetShard(int fd) {
+        return shards_[std::hash<int>{}(fd) % SHARD_COUNT];
+    }
+    
     ServerConfig config_;
     std::unique_ptr<PersistentKvStore> store_;
     std::unique_ptr<TcpServer> tcp_server_;
-    std::unordered_map<int, RespReader> readers_;
     std::atomic<bool> running_{false};
 };
