@@ -117,56 +117,66 @@ endif()
 
 enable_testing()
 
+# 统一测试入口（初始化 Logger）
+set(TEST_MAIN tests/test_main.cpp)
+
 # 每个测试文件生成单独的可执行文件
 add_executable(test_kv_store
+    ${TEST_MAIN}
     tests/test_kv_store.cpp
 )
 set_target_properties(test_kv_store PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
 target_include_directories(test_kv_store PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_kv_store PRIVATE kvstore_lib gtest gtest_main)
+target_link_libraries(test_kv_store PRIVATE kvstore_lib gtest)
 
 add_executable(test_protocol
+    ${TEST_MAIN}
     tests/test_protocol.cpp
 )
 set_target_properties(test_protocol PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
 target_include_directories(test_protocol PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_protocol PRIVATE kvstore_lib gtest gtest_main)
+target_link_libraries(test_protocol PRIVATE kvstore_lib gtest)
 
 add_executable(test_cli_parser
+    ${TEST_MAIN}
     tests/test_cli_parser.cpp
     src/client/cli_parser.cpp
 )
 set_target_properties(test_cli_parser PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
 target_include_directories(test_cli_parser PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_cli_parser PRIVATE kvstore_lib gtest gtest_main)
+target_link_libraries(test_cli_parser PRIVATE kvstore_lib gtest)
 
 add_executable(test_crc32
+    ${TEST_MAIN}
     tests/test_crc32.cpp
 )
 set_target_properties(test_crc32 PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
 target_include_directories(test_crc32 PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_crc32 PRIVATE kvstore_lib gtest gtest_main)
+target_link_libraries(test_crc32 PRIVATE kvstore_lib gtest)
 
 add_executable(test_wal
+    ${TEST_MAIN}
     tests/test_wal.cpp
 )
 set_target_properties(test_wal PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
 target_include_directories(test_wal PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_wal PRIVATE kvstore_lib gtest gtest_main)
+target_link_libraries(test_wal PRIVATE kvstore_lib gtest)
 
 add_executable(test_snapshot
+    ${TEST_MAIN}
     tests/test_snapshot.cpp
 )
 set_target_properties(test_snapshot PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
 target_include_directories(test_snapshot PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_snapshot PRIVATE kvstore_lib gtest gtest_main)
+target_link_libraries(test_snapshot PRIVATE kvstore_lib gtest)
 
 add_executable(test_persistent_kv_store
+    ${TEST_MAIN}
     tests/test_persistent_kv_store.cpp
 )
 set_target_properties(test_persistent_kv_store PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
 target_include_directories(test_persistent_kv_store PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_persistent_kv_store PRIVATE kvstore_lib gtest gtest_main)
+target_link_libraries(test_persistent_kv_store PRIVATE kvstore_lib gtest)
 
 if(WIN32)
     target_link_libraries(test_kv_store PRIVATE wsock32 ws2_32)

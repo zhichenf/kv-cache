@@ -1,5 +1,7 @@
 #include <benchmark/benchmark.h>
 #include "common/wal.h"
+#include "common/logger.h"
+#include "server/config.h"
 #include <filesystem>
 
 // ============================================================
@@ -16,6 +18,19 @@
 // ============================================================
 
 namespace fs = std::filesystem;
+
+// 解析日志级别字符串
+static LogLevel ParseLogLevelString(const std::string& level) {
+    std::string lower = level;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    
+    if (lower == "debug") return LogLevel::DEBUG;
+    if (lower == "info")  return LogLevel::INFO;
+    if (lower == "warn")  return LogLevel::WARN;
+    if (lower == "error") return LogLevel::ERR;
+    
+    return LogLevel::INFO;
+}
 
 static std::string TempDir() {
     auto p = fs::temp_directory_path() / "kv_cache_bench";
@@ -259,9 +274,18 @@ static void BM_WAL_ReadAll(benchmark::State& state) {
 }
 BENCHMARK(BM_WAL_ReadAll)->Unit(benchmark::kMillisecond);
 
-// BENCHMARK_MAIN() 会替代 main()，自动解析命令行参数并运行所有测试
-// 常用参数：
-//   --benchmark_filter=<regex>    只运行匹配的测试
-//   --benchmark_min_time=0.5s    每项测试最少运行 0.5 秒
-//   --benchmark_format=console   输出格式（console/json/csv）
-BENCHMARK_MAIN();
+// 自定义 main：初始化 Logger 后运行 benchmark
+int main(int argc, char** argv) {
+    // 读取 config.txt 初始化 Logger
+    ServerConfig config = ServerConfig::Load("config.txt");
+    Logger::Init(config.log_dir, config.log_max_files,
+                 config.log_max_size_mb * 1024 * 1024);
+    Logger::Instance().SetLevel(ParseLogLevelString(config.log_level));
+    
+    // 运行 benchmark
+    benchmark::Initialize(&argc, argv);
+    benchmark::RunSpecifiedBenchmarks();
+    
+    Logger::Shutdown();
+    return 0;
+}

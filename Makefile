@@ -59,6 +59,7 @@ client: build
 
 # 清理构建产物
 clean:
+	@taskkill //F //IM kv_server.exe 2>/dev/null || true
 	@rm -rf $(BUILD_DIR)
 
 # 运行性能测试
