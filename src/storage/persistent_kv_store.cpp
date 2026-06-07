@@ -1,4 +1,5 @@
 #include "storage/persistent_kv_store.h"
+#include "common/logger.h"
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -67,6 +68,8 @@ PersistentKvStore::PersistentKvStore(const std::string& data_dir)
       op_count_(0),
       burst_window_(kBurstMaxOps, std::chrono::milliseconds(kBurstWindowMs)) {
     
+    LOG_INFO("PersistentKvStore initializing: " + data_dir_);
+    
     // 创建数据目录
     fs::create_directories(data_dir_);
     
@@ -77,6 +80,7 @@ PersistentKvStore::PersistentKvStore(const std::string& data_dir)
     
     // 恢复数据
     Recover();
+    LOG_INFO("PersistentKvStore initialized, keys in memory: " + std::to_string(data_.size()));
 }
 
 PersistentKvStore::~PersistentKvStore() {
@@ -84,6 +88,8 @@ PersistentKvStore::~PersistentKvStore() {
 }
 
 void PersistentKvStore::Recover() {
+    LOG_INFO("Recovering data...");
+    
     // 1. 尝试加载快照
     if (snapshot_.IsValid(data_dir_)) {
         std::vector<std::pair<std::string, std::string>> entries;
@@ -92,6 +98,7 @@ void PersistentKvStore::Recover() {
             for (const auto& [key, value] : entries) {
                 data_[key] = value;
             }
+            LOG_INFO("Recovered " + std::to_string(entries.size()) + " keys from snapshot");
         }
     }
     
@@ -164,6 +171,8 @@ void PersistentKvStore::CheckSnapshotTrigger() {
 }
 
 void PersistentKvStore::CreateSnapshot() {
+    LOG_INFO("Creating snapshot, keys=" + std::to_string(data_.size()));
+    
     // 原子操作顺序：
     // 1. 锁 WAL（阻止后台线程和新写入）
     // 2. 锁 KvStore 写锁（阻止内存修改）

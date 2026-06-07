@@ -1,5 +1,6 @@
 #include "common/snapshot.h"
 #include "common/crc32.h"
+#include "common/logger.h"
 #include <cstring>
 #include <stdexcept>
 
@@ -166,14 +167,26 @@ std::string Snapshot::GetSnapshotPath(const std::string& data_dir) const {
 
 bool Snapshot::Create(const std::string& data_dir,
                       const std::vector<std::pair<std::string, std::string>>& entries) {
+    LOG_INFO("Creating snapshot with " + std::to_string(entries.size()) + " entries");
     std::string filepath = GetSnapshotPath(data_dir);
-    return WriteSnapshot(filepath, entries);
+    bool result = WriteSnapshot(filepath, entries);
+    if (result) {
+        LOG_INFO("Snapshot created successfully");
+    } else {
+        LOG_ERROR("Failed to create snapshot");
+    }
+    return result;
 }
 
 bool Snapshot::Load(const std::string& data_dir,
                     std::vector<std::pair<std::string, std::string>>& entries) {
     std::string filepath = GetSnapshotPath(data_dir);
-    return ReadSnapshot(filepath, entries);
+    LOG_DEBUG("Loading snapshot from: " + filepath);
+    bool result = ReadSnapshot(filepath, entries);
+    if (result) {
+        LOG_DEBUG("Snapshot loaded: " + std::to_string(entries.size()) + " entries");
+    }
+    return result;
 }
 
 bool Snapshot::IsValid(const std::string& data_dir) const {
@@ -183,6 +196,7 @@ bool Snapshot::IsValid(const std::string& data_dir) const {
 
 bool Snapshot::Remove(const std::string& data_dir) {
     std::string filepath = GetSnapshotPath(data_dir);
+    LOG_INFO("Removing snapshot: " + filepath);
     FileDelete(filepath.c_str());
     return true;
 }

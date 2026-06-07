@@ -59,83 +59,6 @@ std::optional<std::string> ReadBulkString(const std::string& buf, size_t& pos) {
 
 } // namespace
 
-// 从完整的 RESP 数组中解析出 Command
-// 输入必须是 *<n>\r\n 数组格式，返回解析结果或错误码
-ParseResult ParseCommand(const std::string& data) {
-    size_t pos = 0;
-    auto line = ReadLine(data, pos);
-    if (!line) {
-        return {{}, ParseError::EMPTY};
-    }
-
-    if (line->empty() || (*line)[0] != '*') {
-        return {{}, ParseError::PROTOCOL_ERROR};
-    }
-
-    int count = std::stoi(line->substr(1));
-    if (count <= 0) {
-        return {{}, ParseError::EMPTY};
-    }
-
-    std::vector<std::string> tokens;
-    for (int i = 0; i < count; ++i) {
-        auto bulk = ReadBulkString(data, pos);
-        if (!bulk) {
-            return {{}, ParseError::PROTOCOL_ERROR};
-        }
-        tokens.push_back(std::move(*bulk));
-    }
-
-    if (tokens.empty()) {
-        return {{}, ParseError::EMPTY};
-    }
-
-    std::string cmd_upper = ToUpper(tokens[0]);
-
-    CommandType type;
-    if (cmd_upper == "SET") {
-        type = CommandType::SET;
-    } else if (cmd_upper == "GET") {
-        type = CommandType::GET;
-    } else if (cmd_upper == "DEL") {
-        type = CommandType::DEL;
-    } else if (cmd_upper == "EXISTS") {
-        type = CommandType::EXISTS;
-    } else if (cmd_upper == "KEYS") {
-        type = CommandType::KEYS;
-    } else {
-        return {{}, ParseError::UNKNOWN_COMMAND};
-    }
-
-    Command cmd{type, {}};
-
-    switch (type) {
-        case CommandType::SET: {
-            if (tokens.size() < 3) {
-                return {{}, ParseError::WRONG_ARG_COUNT};
-            }
-            cmd.args.push_back(tokens[1]);
-            cmd.args.push_back(tokens[2]);
-            break;
-        }
-        case CommandType::GET:
-        case CommandType::DEL:
-        case CommandType::EXISTS: {
-            if (tokens.size() != 2) {
-                return {{}, ParseError::WRONG_ARG_COUNT};
-            }
-            cmd.args.push_back(tokens[1]);
-            break;
-        }
-        case CommandType::KEYS:
-            break;
-        default:
-            return {{}, ParseError::UNKNOWN_COMMAND};
-    }
-
-    return {cmd, ParseError::NONE};
-}
-
 // 将 Response 转为 RESP 格式字符串
 // OK → +OK\r\n | VALUE → $<len>\r\n<val>\r\n | NOT_FOUND → $-1\r\n
 // ERROR → -ERR <msg>\r\n | COUNT → :<n>\r\n
@@ -148,7 +71,7 @@ std::string SerializeResponse(const Response& resp) {
                    + resp.message + "\r\n";
         case Response::Status::NOT_FOUND:
             return "$-1\r\n";
-        case Response::Status::ERROR:
+        case Response::Status::ERR:
             return "-ERR " + resp.message + "\r\n";
         case Response::Status::COUNT:
             return ":" + resp.message + "\r\n";
@@ -209,7 +132,7 @@ RespReader::Result RespReader::TryParse(Command& cmd) {
         }
         tokens.push_back(std::move(*bulk));
     }
-
+    
     std::string cmd_upper = ToUpper(tokens[0]);
 
     CommandType type;

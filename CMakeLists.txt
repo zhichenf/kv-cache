@@ -16,13 +16,25 @@ add_library(kvstore_lib
     src/common/wal.cpp
     src/common/snapshot.cpp
     src/server/tcp_server.cpp
+    src/server/config.cpp
+    src/server/kv_server.cpp
     src/client/client.cpp
 )
-target_include_directories(kvstore_lib PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(kvstore_lib PUBLIC 
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/third_party/spdlog/include
+)
+target_compile_definitions(kvstore_lib PUBLIC SPDLOG_FMT_BUNDLED)
 target_link_libraries(kvstore_lib PUBLIC Threads::Threads)
 
 add_executable(kv_server src/server/server_main.cpp)
 target_link_libraries(kv_server PRIVATE kvstore_lib Threads::Threads)
+add_custom_command(TARGET kv_server POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/config.txt
+        $<TARGET_FILE_DIR:kv_server>/../config.txt
+    COMMENT "Copying config.txt to build directory"
+)
 
 add_executable(kv_client src/client/client_main.cpp src/client/cli_parser.cpp)
 target_link_libraries(kv_client PRIVATE kvstore_lib Threads::Threads)
@@ -219,4 +231,38 @@ target_link_libraries(bench_wal PRIVATE kvstore_lib benchmark benchmark_main Thr
 
 if(WIN32)
     target_link_libraries(bench_wal PRIVATE wsock32 ws2_32)
+endif()
+
+# D2D 集成测试
+add_executable(writer_client d2dtest/clients/writer_client.cpp)
+set_target_properties(writer_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/d2dtest)
+target_link_libraries(writer_client PRIVATE kvstore_lib Threads::Threads)
+
+add_executable(burst_client d2dtest/clients/burst_client.cpp)
+set_target_properties(burst_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/d2dtest)
+target_link_libraries(burst_client PRIVATE kvstore_lib Threads::Threads)
+
+add_executable(steady_client d2dtest/clients/steady_client.cpp)
+set_target_properties(steady_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/d2dtest)
+target_link_libraries(steady_client PRIVATE kvstore_lib Threads::Threads)
+
+add_executable(delete_client d2dtest/clients/delete_client.cpp)
+set_target_properties(delete_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/d2dtest)
+target_link_libraries(delete_client PRIVATE kvstore_lib Threads::Threads)
+
+add_executable(modify_client d2dtest/clients/modify_client.cpp)
+set_target_properties(modify_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/d2dtest)
+target_link_libraries(modify_client PRIVATE kvstore_lib Threads::Threads)
+
+add_executable(reader_client d2dtest/clients/reader_client.cpp)
+set_target_properties(reader_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/d2dtest)
+target_link_libraries(reader_client PRIVATE kvstore_lib Threads::Threads)
+
+if(WIN32)
+    target_link_libraries(writer_client PRIVATE wsock32 ws2_32)
+    target_link_libraries(burst_client PRIVATE wsock32 ws2_32)
+    target_link_libraries(steady_client PRIVATE wsock32 ws2_32)
+    target_link_libraries(delete_client PRIVATE wsock32 ws2_32)
+    target_link_libraries(modify_client PRIVATE wsock32 ws2_32)
+    target_link_libraries(reader_client PRIVATE wsock32 ws2_32)
 endif()

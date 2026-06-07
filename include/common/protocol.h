@@ -31,28 +31,18 @@ struct Command {
     ParseError error = ParseError::NONE;
 };
 
-// 对命令解析的结果
-struct ParseResult {
-    Command cmd;
-    ParseError error = ParseError::NONE;
-    bool Ok() const { return error == ParseError::NONE; }
-};
-
 // 服务器对客户端命令回应的resp协议类型
 struct Response {
     enum class Status {
         OK,
         VALUE,
         NOT_FOUND,
-        ERROR,
+        ERR,
         COUNT
     };
     Status status;
     std::string message;
 };
-
-// 从完整 RESP 数组中解析出命令
-ParseResult ParseCommand(const std::string& data);
 
 // 将 Response 序列化为 RESP 格式
 std::string SerializeResponse(const Response& resp);

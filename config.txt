@@ -1,0 +1,7 @@
+# kv_cache server config
+port=6379
+data_dir=./data
+log_level=info
+log_dir=logs
+log_max_files=5
+log_max_size_mb=5

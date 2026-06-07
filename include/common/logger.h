@@ -1,20 +1,19 @@
 #pragma once
 
+#include "spdlog/spdlog.h"
+#include "spdlog/async.h"
+#include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include <memory>
 #include <string>
-#include <iostream>
-#include <sstream>
-#include <ctime>
-#include <iomanip>
-#include <mutex>
 
 enum class LogLevel {
     DEBUG,
     INFO,
     WARN,
-    ERROR
+    ERR
 };
 
-// 简单的同步日志器，支持级别过滤和时间戳
 class Logger {
 public:
     static Logger& Instance() {
@@ -22,46 +21,65 @@ public:
         return logger;
     }
 
-    // 设置日志级别，低于该级别的日志不输出
+    static void Init(const std::string& log_dir = "logs",
+                     size_t max_files = 5,
+                     size_t max_size = 5 * 1024 * 1024) {
+        auto& logger = Instance();
+        
+        // 创建异步线程池：队列深度 8192，1 个后台写入线程
+        spdlog::init_thread_pool(8192, 1);
+        
+        std::string log_path = log_dir + "/kv_cache.log";
+        
+        auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+            log_path, max_size, max_files);
+        
+        auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+        
+        std::vector<spdlog::sink_ptr> sinks{file_sink, console_sink};
+        
+        // 创建异步 logger
+        logger.spd_logger_ = std::make_shared<spdlog::async_logger>(
+            "kv_cache", sinks.begin(), sinks.end(),
+            spdlog::thread_pool(), spdlog::async_overflow_policy::block);
+        
+        logger.spd_logger_->set_pattern("[%Y-%m-%d %H:%M:%S.%e][%l][%s:%#] %v");
+        logger.spd_logger_->set_level(spdlog::level::info);
+        logger.spd_logger_->flush_on(spdlog::level::info);
+        
+        spdlog::set_default_logger(logger.spd_logger_);
+    }
+
+    static void Flush() {
+        if (Instance().spd_logger_) {
+            Instance().spd_logger_->flush();
+        }
+    }
+
+    static void Shutdown() {
+        Flush();
+        spdlog::shutdown();
+    }
+
     void SetLevel(LogLevel level) {
-        level_ = level;
-    }
-
-    // 输出一条日志，ERROR 级别输出到 cerr，其余到 cout
-    void Log(LogLevel level, const std::string& file, int line, const std::string& msg) {
-        if (level < level_) return;
-
-        std::string level_str;
+        if (!spd_logger_) return;
+        
         switch (level) {
-            case LogLevel::DEBUG: level_str = "DEBUG"; break;
-            case LogLevel::INFO:  level_str = "INFO";  break;
-            case LogLevel::WARN:  level_str = "WARN";  break;
-            case LogLevel::ERROR: level_str = "ERROR"; break;
-        }
-
-        auto now = std::time(nullptr);
-        auto tm = *std::localtime(&now);
-        std::ostringstream oss;
-        oss << "[" << std::put_time(&tm, "%H:%M:%S") << "]"
-            << "[" << level_str << "]"
-            << "[" << file << ":" << line << "] "
-            << msg;
-
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (level == LogLevel::ERROR) {
-            std::cerr << oss.str() << std::endl;
-        } else {
-            std::cout << oss.str() << std::endl;
+            case LogLevel::DEBUG: spd_logger_->set_level(spdlog::level::debug); break;
+            case LogLevel::INFO:  spd_logger_->set_level(spdlog::level::info);  break;
+            case LogLevel::WARN:  spd_logger_->set_level(spdlog::level::warn);  break;
+            case LogLevel::ERR:   spd_logger_->set_level(spdlog::level::err);   break;
         }
     }
+
+    std::shared_ptr<spdlog::logger> GetSpdLogger() { return spd_logger_; }
 
 private:
     Logger() = default;
-    LogLevel level_ = LogLevel::INFO;
-    std::mutex mutex_;
+    std::shared_ptr<spdlog::logger> spd_logger_;
 };
 
-#define LOG_DEBUG(msg)  Logger::Instance().Log(LogLevel::DEBUG, __FILE__, __LINE__, msg)
-#define LOG_INFO(msg)   Logger::Instance().Log(LogLevel::INFO,  __FILE__, __LINE__, msg)
-#define LOG_WARN(msg)   Logger::Instance().Log(LogLevel::WARN,  __FILE__, __LINE__, msg)
-#define LOG_ERROR(msg)  Logger::Instance().Log(LogLevel::ERROR, __FILE__, __LINE__, msg)
+#define LOG_DEBUG(msg) SPDLOG_LOGGER_DEBUG(spdlog::default_logger(), msg)
+#define LOG_INFO(msg)  SPDLOG_LOGGER_INFO(spdlog::default_logger(), msg)
+#define LOG_WARN(msg)  SPDLOG_LOGGER_WARN(spdlog::default_logger(), msg)
+#define LOG_ERROR(msg) SPDLOG_LOGGER_ERROR(spdlog::default_logger(), msg)

@@ -1,4 +1,4 @@
-.PHONY: build clean test test_all server client bench
+.PHONY: build clean test test_all server client bench d2d_test
 
 BUILD_DIR = build
 GTEST_LIB_DIR = third_party/lib/win
@@ -9,6 +9,7 @@ build:
 	@if [ ! -f $(BUILD_DIR)/Makefile ]; then cd $(BUILD_DIR) && cmake -G "MinGW Makefiles" ..; fi
 	@cd $(BUILD_DIR) && cmake --build .
 	@cp -f $(GTEST_LIB_DIR)/*.dll $(BUILD_DIR)/test/ 2>/dev/null || true
+	@cp -f config.txt $(BUILD_DIR)/ 2>/dev/null || true
 
 # 运行所有测试
 test_all: build
@@ -65,3 +66,7 @@ bench: build
 	@mkdir -p $(BUILD_DIR)/bench
 	@cp -f $(GTEST_LIB_DIR)/libbenchmark*.dll $(BUILD_DIR)/bench/ 2>/dev/null || true
 	@cd $(BUILD_DIR) && ./bench/bench_wal.exe
+
+# 运行 D2D 集成测试
+d2d_test: build
+	@python d2dtest/run_test.py

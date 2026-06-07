@@ -1,5 +1,6 @@
 #include "common/wal.h"
 #include "common/crc32.h"
+#include "common/logger.h"
 #include <cstring>
 #include <stdexcept>
 
@@ -203,6 +204,8 @@ void WAL::CloseFD() {
 void WAL::Init(const std::string& filepath, const WALConfig& config) {
     std::lock_guard<std::mutex> lock(mutex_);
     
+    LOG_INFO("WAL initializing: " + filepath);
+    
     // 如果已经初始化，先关闭
     if (is_open_) {
         running_ = false;
@@ -218,14 +221,22 @@ void WAL::Init(const std::string& filepath, const WALConfig& config) {
     filepath_ = filepath;
     enabled_ = TryOpen();
     
+    if (enabled_) {
+        LOG_INFO("WAL opened successfully, policy=" + std::to_string(static_cast<int>(config_.policy)));
+    } else {
+        LOG_ERROR("WAL degraded: failed to open " + filepath);
+    }
+    
     // 启动后台刷盘线程（EVERYSEC 策略）
     if (enabled_ && config_.policy == FsyncPolicy::EVERYSEC) {
         running_ = true;
         sync_thread_ = std::thread(&WAL::SyncLoop, this);
+        LOG_INFO("WAL sync thread started");
     }
 }
 
 void WAL::Shutdown() {
+    LOG_INFO("WAL shutting down...");
     // 先停止线程（不持有锁，避免死锁）
     running_ = false;
     
@@ -243,6 +254,7 @@ void WAL::Shutdown() {
     }
     
     enabled_ = false;
+    LOG_INFO("WAL shutdown complete");
 }
 
 bool WAL::TryOpen() {
@@ -360,12 +372,14 @@ void WAL::ClearWithoutLock() {
         return;
     }
     
+    LOG_DEBUG("WAL clearing file: " + filepath_);
     CloseFD();
     
     // 重新打开文件并清空
     fd_ = FileOpenTruncate(filepath_.c_str());
     
     if (fd_ < 0) {
+        LOG_ERROR("Failed to clear WAL file: " + filepath_);
         throw std::runtime_error("Failed to clear WAL file: " + filepath_);
     }
     
@@ -434,8 +448,11 @@ void WAL::WriteRecord(const WALRecord& record) {
     ssize_t n = FileWrite(fd_, data.data(), data.size());
     
     if (n != static_cast<ssize_t>(data.size())) {
+        LOG_ERROR("Failed to write WAL record");
         throw std::runtime_error("Failed to write to WAL file");
     }
     
     write_pos_ += n;
+    LOG_DEBUG("WAL wrote record: op=" + std::to_string(static_cast<int>(record.op)) + 
+              " key=" + record.key);
 }
