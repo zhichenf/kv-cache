@@ -5,7 +5,7 @@
 #include <optional>
 #include <mutex>
 #include <shared_mutex>
-#include <unordered_map>
+#include "absl/container/flat_hash_map.h"
 
 // 线程安全的 KV 存储引擎，基于 shared_mutex 实现读写分离
 class KvStore {
@@ -25,5 +25,5 @@ public:
 
 protected:
     mutable std::shared_mutex mutex_;
-    std::unordered_map<std::string, std::string> data_;
+    absl::flat_hash_map<std::string, std::string> data_;
 };

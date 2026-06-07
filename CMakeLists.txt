@@ -8,6 +8,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 find_package(Threads REQUIRED)
 
+# 引入 abseil（禁用测试）
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/abseil EXCLUDE_FROM_ALL)
+
 add_library(kvstore_lib
     src/storage/kv_store.cpp
     src/storage/persistent_kv_store.cpp
@@ -25,7 +30,7 @@ target_include_directories(kvstore_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/third_party/spdlog/include
 )
 target_compile_definitions(kvstore_lib PUBLIC SPDLOG_FMT_BUNDLED)
-target_link_libraries(kvstore_lib PUBLIC Threads::Threads)
+target_link_libraries(kvstore_lib PUBLIC Threads::Threads absl::flat_hash_map)
 
 add_executable(kv_server src/server/server_main.cpp)
 target_link_libraries(kv_server PRIVATE kvstore_lib Threads::Threads)
@@ -120,73 +125,31 @@ enable_testing()
 # 统一测试入口（初始化 Logger）
 set(TEST_MAIN tests/test_main.cpp)
 
-# 每个测试文件生成单独的可执行文件
-add_executable(test_kv_store
-    ${TEST_MAIN}
-    tests/test_kv_store.cpp
-)
-set_target_properties(test_kv_store PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
-target_include_directories(test_kv_store PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_kv_store PRIVATE kvstore_lib gtest)
+# 通用测试目标函数
+function(add_kv_test TEST_NAME)
+    set(TEST_FILE "tests/${TEST_NAME}.cpp")
+    set(TEST_SOURCES ${TEST_MAIN} ${TEST_FILE})
+    foreach(ARG ${ARGN})
+        list(APPEND TEST_SOURCES ${ARG})
+    endforeach()
 
-add_executable(test_protocol
-    ${TEST_MAIN}
-    tests/test_protocol.cpp
-)
-set_target_properties(test_protocol PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
-target_include_directories(test_protocol PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_protocol PRIVATE kvstore_lib gtest)
+    add_executable(${TEST_NAME} ${TEST_SOURCES})
+    set_target_properties(${TEST_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
+    target_include_directories(${TEST_NAME} PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
+    target_link_libraries(${TEST_NAME} PRIVATE kvstore_lib gtest)
+    if(WIN32)
+        target_link_libraries(${TEST_NAME} PRIVATE wsock32 ws2_32)
+    endif()
+endfunction()
 
-add_executable(test_cli_parser
-    ${TEST_MAIN}
-    tests/test_cli_parser.cpp
-    src/client/cli_parser.cpp
-)
-set_target_properties(test_cli_parser PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
-target_include_directories(test_cli_parser PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_cli_parser PRIVATE kvstore_lib gtest)
-
-add_executable(test_crc32
-    ${TEST_MAIN}
-    tests/test_crc32.cpp
-)
-set_target_properties(test_crc32 PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
-target_include_directories(test_crc32 PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_crc32 PRIVATE kvstore_lib gtest)
-
-add_executable(test_wal
-    ${TEST_MAIN}
-    tests/test_wal.cpp
-)
-set_target_properties(test_wal PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
-target_include_directories(test_wal PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_wal PRIVATE kvstore_lib gtest)
-
-add_executable(test_snapshot
-    ${TEST_MAIN}
-    tests/test_snapshot.cpp
-)
-set_target_properties(test_snapshot PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
-target_include_directories(test_snapshot PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_snapshot PRIVATE kvstore_lib gtest)
-
-add_executable(test_persistent_kv_store
-    ${TEST_MAIN}
-    tests/test_persistent_kv_store.cpp
-)
-set_target_properties(test_persistent_kv_store PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/test)
-target_include_directories(test_persistent_kv_store PRIVATE ${GTEST_INCLUDE_DIR} ${GMOCK_INCLUDE_DIR})
-target_link_libraries(test_persistent_kv_store PRIVATE kvstore_lib gtest)
-
-if(WIN32)
-    target_link_libraries(test_kv_store PRIVATE wsock32 ws2_32)
-    target_link_libraries(test_protocol PRIVATE wsock32 ws2_32)
-    target_link_libraries(test_cli_parser PRIVATE wsock32 ws2_32)
-    target_link_libraries(test_crc32 PRIVATE wsock32 ws2_32)
-    target_link_libraries(test_wal PRIVATE wsock32 ws2_32)
-    target_link_libraries(test_snapshot PRIVATE wsock32 ws2_32)
-    target_link_libraries(test_persistent_kv_store PRIVATE wsock32 ws2_32)
-endif()
+# 单元测试
+add_kv_test(test_kv_store)
+add_kv_test(test_protocol)
+add_kv_test(test_cli_parser src/client/cli_parser.cpp)
+add_kv_test(test_crc32)
+add_kv_test(test_wal)
+add_kv_test(test_snapshot)
+add_kv_test(test_persistent_kv_store)
 
 # Google Benchmark 跨平台配置
 set(BENCHMARK_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/third_party/benchmark/include)
@@ -244,35 +207,19 @@ if(WIN32)
 endif()
 
 # D2D 集成测试
-add_executable(writer_client d2dtest/clients/writer_client.cpp)
-set_target_properties(writer_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/d2dtest)
-target_link_libraries(writer_client PRIVATE kvstore_lib Threads::Threads)
+function(add_d2d_client CLIENT_NAME)
+    set(CLIENT_SRC "d2dtest/clients/${CLIENT_NAME}.cpp")
+    add_executable(${CLIENT_NAME} ${CLIENT_SRC})
+    set_target_properties(${CLIENT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/d2dtest)
+    target_link_libraries(${CLIENT_NAME} PRIVATE kvstore_lib Threads::Threads)
+    if(WIN32)
+        target_link_libraries(${CLIENT_NAME} PRIVATE wsock32 ws2_32)
+    endif()
+endfunction()
 
-add_executable(burst_client d2dtest/clients/burst_client.cpp)
-set_target_properties(burst_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/d2dtest)
-target_link_libraries(burst_client PRIVATE kvstore_lib Threads::Threads)
-
-add_executable(steady_client d2dtest/clients/steady_client.cpp)
-set_target_properties(steady_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/d2dtest)
-target_link_libraries(steady_client PRIVATE kvstore_lib Threads::Threads)
-
-add_executable(delete_client d2dtest/clients/delete_client.cpp)
-set_target_properties(delete_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/d2dtest)
-target_link_libraries(delete_client PRIVATE kvstore_lib Threads::Threads)
-
-add_executable(modify_client d2dtest/clients/modify_client.cpp)
-set_target_properties(modify_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/d2dtest)
-target_link_libraries(modify_client PRIVATE kvstore_lib Threads::Threads)
-
-add_executable(reader_client d2dtest/clients/reader_client.cpp)
-set_target_properties(reader_client PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/d2dtest)
-target_link_libraries(reader_client PRIVATE kvstore_lib Threads::Threads)
-
-if(WIN32)
-    target_link_libraries(writer_client PRIVATE wsock32 ws2_32)
-    target_link_libraries(burst_client PRIVATE wsock32 ws2_32)
-    target_link_libraries(steady_client PRIVATE wsock32 ws2_32)
-    target_link_libraries(delete_client PRIVATE wsock32 ws2_32)
-    target_link_libraries(modify_client PRIVATE wsock32 ws2_32)
-    target_link_libraries(reader_client PRIVATE wsock32 ws2_32)
-endif()
+add_d2d_client(writer_client)
+add_d2d_client(burst_client)
+add_d2d_client(steady_client)
+add_d2d_client(delete_client)
+add_d2d_client(modify_client)
+add_d2d_client(reader_client)
