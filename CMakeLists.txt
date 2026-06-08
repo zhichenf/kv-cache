@@ -194,6 +194,26 @@ if(BENCHMARK_LIB_FOUND)
             IMPORTED_LOCATION ${BENCHMARK_PLATFORM_DIR}/libbenchmark_main.so
         )
     endif()
+else()
+    # 编译 Google Benchmark 并输出到对应平台目录
+    message(STATUS "Google Benchmark not found, building from source to ${BENCHMARK_PLATFORM_DIR}")
+
+    set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    add_subdirectory(third_party/benchmark EXCLUDE_FROM_ALL)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
+    # 设置输出目录
+    set_target_properties(benchmark PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${BENCHMARK_PLATFORM_DIR}
+        ARCHIVE_OUTPUT_DIRECTORY ${BENCHMARK_PLATFORM_DIR}
+        LIBRARY_OUTPUT_DIRECTORY ${BENCHMARK_PLATFORM_DIR}
+    )
+    set_target_properties(benchmark_main PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${BENCHMARK_PLATFORM_DIR}
+        ARCHIVE_OUTPUT_DIRECTORY ${BENCHMARK_PLATFORM_DIR}
+        LIBRARY_OUTPUT_DIRECTORY ${BENCHMARK_PLATFORM_DIR}
+    )
 endif()
 
 # Benchmark 可执行文件
