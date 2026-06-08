@@ -21,13 +21,16 @@ import re
 
 # 配置
 BUILD_DIR = os.path.join(os.path.dirname(__file__), "..", "build", "d2dtest")
-SERVER_BIN = os.path.join(BUILD_DIR, "..", "bin", "kv_server.exe")
-WRITER_BIN = os.path.join(BUILD_DIR, "writer_client.exe")
-BURST_BIN = os.path.join(BUILD_DIR, "burst_client.exe")
-STEADY_BIN = os.path.join(BUILD_DIR, "steady_client.exe")
-DELETE_BIN = os.path.join(BUILD_DIR, "delete_client.exe")
-MODIFY_BIN = os.path.join(BUILD_DIR, "modify_client.exe")
-READER_BIN = os.path.join(BUILD_DIR, "reader_client.exe")
+
+EXE = ".exe" if sys.platform == "win32" else ""
+
+SERVER_BIN = os.path.join(BUILD_DIR, "..", "bin", f"kv_server{EXE}")
+WRITER_BIN = os.path.join(BUILD_DIR, f"writer_client{EXE}")
+BURST_BIN = os.path.join(BUILD_DIR, f"burst_client{EXE}")
+STEADY_BIN = os.path.join(BUILD_DIR, f"steady_client{EXE}")
+DELETE_BIN = os.path.join(BUILD_DIR, f"delete_client{EXE}")
+MODIFY_BIN = os.path.join(BUILD_DIR, f"modify_client{EXE}")
+READER_BIN = os.path.join(BUILD_DIR, f"reader_client{EXE}")
 RESULT_FILE = os.path.join(os.path.dirname(__file__), "result.txt")
 
 HOST = "127.0.0.1"
