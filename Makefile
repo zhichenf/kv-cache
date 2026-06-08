@@ -10,11 +10,13 @@ ifeq ($(UNAME_S), Linux)
     EXE =
     KILL_CMD = killall
     CMAKE_GEN =
+    PYTHON = python3
 else
     GTEST_LIB_DIR = third_party/lib/win
     EXE = .exe
     KILL_CMD = taskkill //F //IM
     CMAKE_GEN = -G "MinGW Makefiles"
+    PYTHON = python
 endif
 
 # 构建所有目标（增量编译）
@@ -87,4 +89,4 @@ bench: build
 
 # 运行 D2D 集成测试
 d2d_test: build
-	@python d2dtest/run_test.py
+	@$(PYTHON) d2dtest/run_test.py
