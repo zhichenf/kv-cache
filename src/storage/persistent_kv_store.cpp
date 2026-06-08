@@ -96,7 +96,7 @@ void PersistentKvStore::Recover() {
         if (snapshot_.Load(data_dir_, entries)) {
             std::lock_guard<std::shared_mutex> lock(mutex_);
             for (const auto& [key, value] : entries) {
-                data_[key] = value;
+                data_.insert_or_assign(key, value);
             }
             LOG_INFO("Recovered " + std::to_string(entries.size()) + " keys from snapshot");
         }
@@ -108,7 +108,7 @@ void PersistentKvStore::Recover() {
     for (const auto& record : records) {
         switch (record.op) {
             case OpType::SET:
-                data_[record.key] = record.value;
+                data_.insert_or_assign(record.key, record.value);
                 break;
             case OpType::DEL:
                 data_.erase(record.key);

@@ -3,7 +3,7 @@
 // 写入键值对，已存在的 key 会被覆盖
 void KvStore::Set(const std::string& key, const std::string& value) {
     std::unique_lock lock(mutex_);
-    data_[key] = value;
+    data_.insert_or_assign(key, value);
 }
 
 // 读取 key 对应的值，key 不存在返回 nullopt
