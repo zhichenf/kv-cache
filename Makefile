@@ -24,7 +24,7 @@ build:
 		rm -rf $(BUILD_DIR)/CMakeCache.txt $(BUILD_DIR)/CMakeFiles 2>/dev/null || true; \
 		cd $(BUILD_DIR) && cmake $(CMAKE_GEN) ..; \
 	fi
-	@cd $(BUILD_DIR) && cmake --build .
+	@cd $(BUILD_DIR) && cmake --build . --no-print-directory
 	@if [ "$(UNAME_S)" != "Linux" ]; then cp -f $(GTEST_LIB_DIR)/*.dll $(BUILD_DIR)/test/ 2>/dev/null || true; fi
 	@cp -f config.txt $(BUILD_DIR)/ 2>/dev/null || true
 
